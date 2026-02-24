@@ -7,7 +7,9 @@ Will post useful resources I find along the way here.
 
 [ESP32-S3 Wiki from Espressif]
 
-[ESP32-S3-ETH ref page]. Look at schematic for the SPI connections to the W5500 ethernet controller (_lower left corner under **POE**_).
+[ESP32-S3-ETH ref page]
+
+- Look at schematic for the SPI connections to the W5500 ethernet controller (_lower left corner under **POE**_).
 
 ## Code References
 
