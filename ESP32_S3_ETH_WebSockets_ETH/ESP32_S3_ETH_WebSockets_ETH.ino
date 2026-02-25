@@ -38,7 +38,7 @@ static const char *htmlContent PROGMEM = R"(
   <input type="text" id="message" placeholder="Type a message">
   <button onclick='sendMessage()'>Send</button>
   <script>
-    var ws = new WebSocket('ws://10.0.0.62/ws');
+    var ws = new WebSocket('ws://192.168.0.4/ws');
     ws.onopen = function() {
       console.log("WebSocket connected");
     };
@@ -123,12 +123,60 @@ void setup() {
   SPI.begin(ETH_SPI_SCK, ETH_SPI_MISO, ETH_SPI_MOSI);
   ETH.begin(ETH_PHY_TYPE, ETH_PHY_ADDR, ETH_PHY_CS, ETH_PHY_IRQ, ETH_PHY_RST, SPI);
   ETH.config(stIP,stGateway,stSubnet);
+
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/html", (const uint8_t *)htmlContent, htmlContentLength);
   });
-#if USE_TWO_ETH_PORTS
-  ETH1.begin(ETH1_PHY_TYPE, ETH1_PHY_ADDR, ETH1_PHY_CS, ETH1_PHY_IRQ, ETH1_PHY_RST, SPI);
-#endif
+
+  ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+    (void)len;
+
+    if (type == WS_EVT_CONNECT) {
+      ws.textAll("new client connected");
+      Serial.println("ws connect");
+      client->setCloseClientOnQueueFull(false);
+      client->ping();
+
+    } else if (type == WS_EVT_DISCONNECT) {
+      ws.textAll("client disconnected");
+      Serial.println("ws disconnect");
+
+    } else if (type == WS_EVT_ERROR) {
+      Serial.println("ws error");
+
+    } else if (type == WS_EVT_PONG) {
+      Serial.println("ws pong");
+
+    } else if (type == WS_EVT_DATA) {
+      AwsFrameInfo *info = (AwsFrameInfo *)arg;
+      Serial.printf("index: %" PRIu64 ", len: %" PRIu64 ", final: %" PRIu8 ", opcode: %" PRIu8 "\n", info->index, info->len, info->final, info->opcode);
+      String msg = "";
+      if (info->final && info->index == 0 && info->len == len) {
+        if (info->opcode == WS_TEXT) {
+          data[len] = 0;
+          Serial.printf("ws text: %s\n", (char *)data);
+          client->ping();
+        }
+      }
+    }
+  });
+
+  // shows how to prevent a third WS client to connect
+  server.addHandler(&ws).addMiddleware([](AsyncWebServerRequest *request, ArMiddlewareNext next) {
+    // ws.count() is the current count of WS clients: this one is trying to upgrade its HTTP connection
+    if (ws.count() > 1) {
+      // if we have 2 clients or more, prevent the next one to connect
+      request->send(503, "text/plain", "Server is busy");
+    } else {
+      // process next middleware and at the end the handler
+      next();
+    }
+  });
+
+  server.addHandler(&ws);
+
+  server.begin();
+
 }
 
 void loop() {
